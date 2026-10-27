@@ -11,7 +11,7 @@ Confirmed mapping rules:
   NULL component revision: use the finished part revision.
   Preserve original operation Active = 1 filter; return BOM_Active without a new filter.
 Confirmed purchasing rules:
-  Blanket_Order = 1; PO status = 'On Order'; line status = 'On Order'.
+  Blanket_Order = 1; PO status = 'On Order'; line status excludes Cancelled / Closed (Requisition is allowed).
   Keep all qualifying lines; do not automatically pick the latest PO.
 
 No cost/rate calculation or write-back is performed.
@@ -123,7 +123,7 @@ WHERE EXISTS (
 )
   AND P.Blanket_Order = 1
   AND PS.PO_Status = 'On Order'
-  AND LS.Line_Item_Status = 'On Order';
+  AND UPPER(LTRIM(RTRIM(LS.Line_Item_Status))) NOT IN ('CANCELLED', 'CANCELED', 'CLOSED');
 
 SELECT Material_Part_Key, COUNT(*) AS Qualified_PO_Line_Count
 INTO #PurchaseCounts

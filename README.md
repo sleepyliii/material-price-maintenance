@@ -27,7 +27,7 @@ flowchart LR
 ## Rules / 规则
 
 - Part + specified revision; blank means blank, numeric one-digit revision pads to two digits.
-- Purchase PO: `Blanket_Order = 1`; both PO and line status `On Order`. Multiple candidates require confirmation.
+- Purchase PO: `Blanket_Order = 1`; PO status `On Order`; line status excludes `Cancelled` and `Closed` (`Requisition` is allowed). Multiple candidates require confirmation.
 - Tariff rounds half up to 2 decimals. Settlement ratio = `ROUND(factor / (1 + tariff), 2)`, Thailand factor `0.91`, China `0.93`.
 - Target purchase price = `ROUND(customer price × ratio, 4)`.
 - `Material.Material` = target purchase price; `Material.Tariff` = target purchase price × rounded tariff, with no further rounding.

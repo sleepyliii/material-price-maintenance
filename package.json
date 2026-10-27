@@ -1,1 +1,1 @@
-{"name": "material-price-maintenance", "version": "1.0.0", "private": true, "type": "module", "scripts": {"test": "node --test material.test.mjs"}}
+{"name": "material-price-maintenance", "version": "1.0.1", "private": true, "type": "module", "scripts": {"test": "node --test material.test.mjs"}}

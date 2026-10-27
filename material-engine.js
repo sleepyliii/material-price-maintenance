@@ -3,6 +3,7 @@ export {normalizeRevision};
 const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
 export class Pending extends Error{}
+export function eligibleLineStatus(value){const status=String(value??'').trim().toLowerCase();return Boolean(status)&&status!=='null'&&!['cancelled','canceled','closed'].includes(status);}
 function parts(s){s=String(s).trim();if(s.startsWith('.'))s='0'+s;const canonical=decimal(s);if(canonical.startsWith('-'))throw new Pending('Negative number / 数值为负');const [a,b='']=canonical.split('.');return {n:BigInt(a+b),scale:b.length};}
 function format(n,scale){const s=n.toString().padStart(scale+1,'0');return scale?s.slice(0,-scale)+'.'+s.slice(-scale):s;}
 function roundFraction(n,d){const q=n/d;return q+(n%d*2n>=d?1n:0n);}
@@ -43,7 +44,8 @@ export function prepare({scope,current,mapping,tariffs,costRows,importCountry,ye
    const material=links[0].material,materialRev=normalizeRevision(links[0].materialRev);
    if(!material)throw new Pending('Material part missing / 原材料零件号缺失');
    if(links.some(r=>decimal(r.quantity)!=='1'))throw new Pending('BOM quantity is not 1 / BOM用量非1或缺失，待确认');
-   const qualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.toLowerCase()==='on order'&&r.lineStatus.toLowerCase()==='on order');
+   if(links.some(r=>r.line&&(!String(r.lineStatus??'').trim()||String(r.lineStatus).trim().toLowerCase()==='null')))throw new Pending('Purchase-line status missing / 采购行状态缺失，待确认');
+   const qualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus));
    const unique=[...group(qualified,r=>key(r.line,r.po,r.lineNo)).values()].map(rr=>{
     if(new Set(rr.map(r=>JSON.stringify(r,Object.keys(r).filter(k=>k!=='_row')))).size!==1)throw new Pending('Inconsistent purchase-line records / 同一采购行记录不一致');
     return rr[0];
