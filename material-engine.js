@@ -21,7 +21,9 @@ export function calculate(price,sourceRate,origin){
  const purchase=round(multiply(round(price,4),ratio),4);
  return {tariff,ratio,purchase,tariffCost:decimal(multiply(purchase,tariff))};
 }
-export function dateISO(value){const d=parseDate(String(value));if(d===null)throw new Pending('Missing effective date / 生效日期缺失');return iso(d);}
+export function dateISO(value){try{const d=parseDate(String(value));if(d===null)throw new Error('missing');return iso(d);}catch{throw new Pending('Invalid or missing customer-price effective date / 客户售价生效日期无效或缺失: '+String(value??''));}}
+export function latestEffective(values){const dates=values.flatMap(v=>String(v??'').split(/[;；]/).map(x=>dateISO(x.trim())));if(!dates.length)throw new Pending('Missing customer-price effective date / 客户售价生效日期缺失');return dates.sort().at(-1);}
+function requiredDecimal(value,label){const text=String(value??'').trim();try{return decimal(text.startsWith('.')?'0'+text:text);}catch{throw new Pending('Invalid or missing '+label+' / 字段无效或为空: '+label+' = '+(text||'(blank / 空白)'));}}
 export function uniqueScope(rows){return [...new Map(rows.filter(r=>r.part).map(r=>[key(r.part,normalizeRevision(r.revision)),{part:r.part,revision:normalizeRevision(r.revision)}])).values()];}
 export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues=[]}){
  const issues=[],candidates=[];
@@ -35,9 +37,9 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
    if(blocked.has(k))throw new Pending('Customer-price review has unresolved issues / 客户售价仍有待确认事项');
    if(!prices.length)throw new Pending('No selected current customer price / 未找到选中客户当前价');
    if(prices.some(r=>!['complete','completed','completed / 已完成','已完成'].includes(r.status.toLowerCase())))throw new Pending('Current customer price needs confirmation / 客户当前价待确认');
-   const priceKeys=new Set(prices.map(r=>key(round(r.price,4),r.currency.toUpperCase(),r.unit.toLowerCase()==='pcs'?'ea':r.unit.toLowerCase(),dateISO(r.effective))));
-   if(priceKeys.size!==1)throw new Pending('Customer prices, units or effective dates differ / 客户价格、单位或生效日期不一致');
-   const price=prices[0],effective=dateISO(price.effective);
+   const priceKeys=new Set(prices.map(r=>key(round(requiredDecimal(r.price,'Customer price / 客户售价'),4),r.currency.toUpperCase(),r.unit.toLowerCase()==='pcs'?'ea':r.unit.toLowerCase())));
+   if(priceKeys.size!==1)throw new Pending('Customer prices or units differ / 客户价格或单位不一致');
+   const price=prices[0],effective=latestEffective(prices.map(r=>r.effective));
    if(price.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(price.unit.toLowerCase()))throw new Pending('Currency/unit basis needs confirmation / 币种或单位待确认');
    if(effective>`${year}-12-31`)throw new Pending('Effective date is later than expiration / 生效日期晚于年底失效日');
    const links=mapping.filter(r=>r.fg===s.part&&normalizeRevision(r.fgRev)===s.revision);
@@ -46,7 +48,11 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
    if(materialGroups.size!==1)throw new Pending('Several BOM materials need confirmation / 多个BOM组件待确认');
    const material=links[0].material,materialRev=normalizeRevision(links[0].materialRev);
    if(!material)throw new Pending('Material part missing / 原材料零件号缺失');
-   if(links.some(r=>decimal(r.quantity)!=='1'))throw new Pending('BOM quantity is not 1 / BOM用量非1或缺失，待确认');
+   for(const r of links){
+    const fallback=r.mappingSource==='Finished part fallback'&&r.material===r.fg&&normalizeRevision(r.materialRev)===normalizeRevision(r.fgRev);
+    if(fallback&&String(r.quantity??'').trim()==='')continue; // Accepted direct-purchase fallback; never invent a quantity of 1.
+    if(requiredDecimal(r.quantity,'BOM_Quantity / BOM用量')!=='1')throw new Pending('BOM quantity is not 1 / BOM用量非1，待确认');
+   }
    if(links.some(r=>r.line&&(!String(r.lineStatus??'').trim()||String(r.lineStatus).trim().toLowerCase()==='null')))throw new Pending('Purchase-line status missing / 采购行状态缺失，待确认');
    const qualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus));
    const unique=[...group(qualified,r=>key(r.line,r.po,r.lineNo)).values()].map(rr=>{
@@ -55,13 +61,13 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
    });
    if(unique.length!==1)throw new Pending(unique.length?'Several qualifying purchase lines / 多个符合条件采购行':'No qualifying purchase line / 无符合条件采购行');
    const po=unique[0];if(!po.line||!po.lineNo||!po.po||!po.supplier)throw new Pending('Purchase-line identifiers or supplier missing / 采购行标识或供应商缺失');
-   if(po.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(po.unit.toLowerCase())||decimal(po.conversion)!=='1')throw new Pending('Purchase currency/unit conversion needs confirmation / 采购币种或换算待确认');
+   if(po.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(po.unit.toLowerCase())||requiredDecimal(po.conversion,'Price_Conversion / 单位换算系数')!=='1')throw new Pending('Purchase currency/unit conversion needs confirmation / 采购币种或换算待确认');
    const origin=supplierOrigin(po.supplier),originLabel=origin==='Thailand'?'泰国 Thailand':'中国 China';
    const partRateRows=tariffs.filter(r=>country(r.importCountry)==='US'&&(r.part===s.part||r.part===material));
    if(!partRateRows.length)throw new Pending('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');
    const rateRows=partRateRows.filter(r=>country(r.exportCountry)===origin);
    if(!rateRows.length)throw new Pending('No tariff for supplier export country / 关税表缺少供应商对应出口国: '+originLabel+'; '+po.supplier);
-   const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':decimal(r.rate.startsWith('.')?'0'+r.rate:r.rate);
+   const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':requiredDecimal(r.rate,'Tariff rate / 关税率');
    if(new Set(rateRows.map(r=>normalizedRate(r))).size!==1)throw new Pending('Conflicting source tariff rates / 底表原始关税率冲突');
    const rate=rateRows[0],calc=calculate(price.price,rate.rate,origin);
    const costs=costRows.filter(r=>r.part===material&&normalizeRevision(r.revision)===materialRev);

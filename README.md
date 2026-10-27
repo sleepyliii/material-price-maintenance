@@ -32,7 +32,7 @@ flowchart LR
 - Tariff rounds half up to 2 decimals. Settlement ratio = `ROUND(factor / (1 + tariff), 2)`, Thailand factor `0.91`, China `0.93`.
 - Target purchase price = `ROUND(customer price × ratio, 4)`.
 - `Material.Material` = target purchase price; `Material.Tariff` = target purchase price × rounded tariff, with no further rounding.
-- Purchase effective date follows the selected customer price. Expiration is December 31 of the current year.
+- Purchase effective date follows the selected customer price; when same-price customer POs have several effective dates, use the latest. Expiration is December 31 of the current year.
 - Macao supplier: CIP; other supplier: CIF. Buying plant: Tawas City.
 - Conflicting tariffs, multiple Operations, shared-material conflicts, unknown country factors and unresolved source values require confirmation. They are not assigned a guessed value.
 
@@ -41,3 +41,5 @@ flowchart LR
 Run `python -m http.server 8788 --bind 127.0.0.1` in the published repository folder, then open `http://127.0.0.1:8788/` in Edge or Chrome. The standalone GitHub Pages version uses the same `dist` files.
 
 Tests: `node --test material.test.mjs`. No build step. Customer-price selection uses an isolated copy of engine 4.7.0; the customer-price review website is unchanged.
+
+No-BOM mappings explicitly marked `Finished part fallback` may retain a blank BOM quantity. No quantity is invented. Invalid numeric-field warnings identify the field.
