@@ -4,6 +4,9 @@ const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
 export class Pending extends Error{}
 export function eligibleLineStatus(value){const status=String(value??'').trim().toLowerCase();return Boolean(status)&&status!=='null'&&!['cancelled','canceled','closed'].includes(status);}
+const countryKey=value=>String(value??'').normalize('NFKC').trim().toLowerCase().replace(/[\s_.\-()/（）]+/g,'');
+export function country(value){const k=countryKey(value);for(const [name,aliases]of Object.entries({US:['US','USA','美国','United States','United States of America','美国 United States','美国 USA'],Thailand:['泰国','Thailand','泰国 Thailand'],China:['中国','China','中国 China']}))if(aliases.some(a=>countryKey(a)===k))return name;return null;}
+export function supplierOrigin(value){const s=String(value??'').normalize('NFKC').toLowerCase(),th=s.includes('thailand'),cn=s.includes('macao')||s.includes('macau');if(th===cn)throw new Pending('Supplier export country needs confirmation / 供应商出口国待确认: '+value);return th?'Thailand':'China';}
 function parts(s){s=String(s).trim();if(s.startsWith('.'))s='0'+s;const canonical=decimal(s);if(canonical.startsWith('-'))throw new Pending('Negative number / 数值为负');const [a,b='']=canonical.split('.');return {n:BigInt(a+b),scale:b.length};}
 function format(n,scale){const s=n.toString().padStart(scale+1,'0');return scale?s.slice(0,-scale)+'.'+s.slice(-scale):s;}
 function roundFraction(n,d){const q=n/d;return q+(n%d*2n>=d?1n:0n);}
@@ -20,7 +23,7 @@ export function calculate(price,sourceRate,origin){
 }
 export function dateISO(value){const d=parseDate(String(value));if(d===null)throw new Pending('Missing effective date / 生效日期缺失');return iso(d);}
 export function uniqueScope(rows){return [...new Map(rows.filter(r=>r.part).map(r=>[key(r.part,normalizeRevision(r.revision)),{part:r.part,revision:normalizeRevision(r.revision)}])).values()];}
-export function prepare({scope,current,mapping,tariffs,costRows,importCountry,year,priceIssues=[]}){
+export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues=[]}){
  const issues=[],candidates=[];
  const issue=(s,reason,extra={})=>issues.push({part:s.part,revision:s.revision,...extra,reason});
  const scoped=uniqueScope(scope);if(!scoped.length)throw new Error('Empty parts list / 零件清单为空');
@@ -53,15 +56,17 @@ export function prepare({scope,current,mapping,tariffs,costRows,importCountry,ye
    if(unique.length!==1)throw new Pending(unique.length?'Several qualifying purchase lines / 多个符合条件采购行':'No qualifying purchase line / 无符合条件采购行');
    const po=unique[0];if(!po.line||!po.lineNo||!po.po||!po.supplier)throw new Pending('Purchase-line identifiers or supplier missing / 采购行标识或供应商缺失');
    if(po.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(po.unit.toLowerCase())||decimal(po.conversion)!=='1')throw new Pending('Purchase currency/unit conversion needs confirmation / 采购币种或换算待确认');
-   const rateRows=tariffs.filter(r=>r.importCountry===importCountry&&(r.part===s.part||r.part===material));
-   if(!rateRows.length)throw new Pending('No exact tariff part match / 无精确零件号关税匹配');
-   if(new Set(rateRows.map(r=>r.exportCountry)).size!==1)throw new Pending('Several export-country routes / 多个出口国路径待确认');
+   const origin=supplierOrigin(po.supplier),originLabel=origin==='Thailand'?'泰国 Thailand':'中国 China';
+   const partRateRows=tariffs.filter(r=>country(r.importCountry)==='US'&&(r.part===s.part||r.part===material));
+   if(!partRateRows.length)throw new Pending('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');
+   const rateRows=partRateRows.filter(r=>country(r.exportCountry)===origin);
+   if(!rateRows.length)throw new Pending('No tariff for supplier export country / 关税表缺少供应商对应出口国: '+originLabel+'; '+po.supplier);
    const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':decimal(r.rate.startsWith('.')?'0'+r.rate:r.rate);
    if(new Set(rateRows.map(r=>normalizedRate(r))).size!==1)throw new Pending('Conflicting source tariff rates / 底表原始关税率冲突');
-   const rate=rateRows[0],calc=calculate(price.price,rate.rate,rate.exportCountry);
+   const rate=rateRows[0],calc=calculate(price.price,rate.rate,origin);
    const costs=costRows.filter(r=>r.part===material&&normalizeRevision(r.revision)===materialRev);
    if(costs.length!==1)throw new Pending(costs.length?'Several standard-cost Operations / 标准成本多个Operation待确认':'Material/revision not in cost template / 标准成本模板未找到原材料版本');
-   candidates.push({...s,material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:/macao/i.test(po.supplier)?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,origin:rate.exportCountry,costRow:costs[0].index,...calc});
+   candidates.push({...s,material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
   }catch(e){issue(s,e instanceof Pending?e.message:'Invalid or missing source value / 原始值无效或缺失: '+String(e.message));}
  }
  // A material shared by several finished parts must have one unambiguous target
