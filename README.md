@@ -44,3 +44,7 @@ Run `python -m http.server 8788 --bind 127.0.0.1 --directory dist` in this folde
 Tests: `node --test tests/*.test.mjs`. No build step. Customer-price selection uses an isolated copy of engine 4.7.0; the customer-price review website is unchanged.
 
 No-BOM mappings explicitly marked `Finished part fallback` may retain a blank BOM quantity. No quantity is invented. Invalid numeric-field warnings identify the field.
+
+Checks run independently: unresolved customer prices or purchase lines do not stop tariff matching. Pending reasons are deduplicated into one concise row per part and revision. An unknown supplier route remains pending.
+
+客户价、采购行无法确认时仍检查关税；每个零件版本汇总一行简短原因。无法确定出口国时列待确认。

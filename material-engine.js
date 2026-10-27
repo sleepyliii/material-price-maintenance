@@ -50,7 +50,9 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,pri
  const blocked=new Set(priceIssues.map(x=>key(x.part,normalizeRevision(x.revision))));
  for(const s of scoped){
   const k=key(s.part,s.revision), prices=current.filter(r=>key(r.part,normalizeRevision(r.revision))===k);
-  try{
+  const reasons=[];
+  const check=fn=>{try{return fn();}catch(e){const text=e instanceof Pending?e.message:'Invalid source value / 原始字段无效';reasons.push(text.split(': ')[0].replace('No Active BOM in this export; re-export to check the accepted finished-part fallback / 底表没有有效BOM，请重新导出以核对成品回退关系','No Active BOM / 无有效BOM'));return null;}};
+  const priceResult=check(()=>{
    if(blocked.has(k))throw new Pending('Customer-price review has unresolved issues / 客户售价仍有待确认事项');
    if(!prices.length)throw new Pending('No selected current customer price / 未找到选中客户当前价');
    if(prices.some(r=>!['complete','completed','completed / 已完成','已完成'].includes(r.status.toLowerCase())))throw new Pending('Current customer price needs confirmation / 客户当前价待确认');
@@ -59,6 +61,9 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,pri
    const price=prices[0],effective=latestEffective(prices.map(r=>r.effective));
    if(price.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(price.unit.toLowerCase()))throw new Pending('Currency/unit basis needs confirmation / 币种或单位待确认');
    if(effective>`${year}-12-31`)throw new Pending('Effective date is later than expiration / 生效日期晚于年底失效日');
+   return {price,effective};
+  });
+  const materialResult=check(()=>{
    const sourceLinks=mapping.filter(r=>r.fg===s.part&&normalizeRevision(r.fgRev)===s.revision);
    if(!sourceLinks.length)throw new Pending('No material mapping / 未找到原材料对应关系');
    const links=sourceLinks.filter(activeMaterialMapping);
@@ -72,6 +77,9 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,pri
     if(fallback&&String(r.quantity??'').trim()==='')continue; // Accepted direct-purchase fallback; never invent a quantity of 1.
     if(requiredDecimal(r.quantity,'BOM_Quantity / BOM用量')!=='1')throw new Pending('BOM quantity is not 1 / BOM用量非1，待确认');
    }
+   return {links,material,materialRev};
+  });
+  const poResult=materialResult&&check(()=>{const {links}=materialResult;
    if(links.some(r=>r.line&&(!String(r.lineStatus??'').trim()||String(r.lineStatus).trim().toLowerCase()==='null')))throw new Pending('Purchase-line status missing / 采购行状态缺失，待确认');
    const statusQualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus));
    const qualified=statusQualified.filter(r=>purchaseLineValid(r,asOf));
@@ -83,18 +91,39 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,pri
    if(unique.length!==1)throw new Pending(unique.length?'Several qualifying purchase lines / 多个符合条件采购行':'No qualifying purchase line / 无符合条件采购行');
    const po=unique[0];if(!po.line||!po.lineNo||!po.po||!po.supplier)throw new Pending('Purchase-line identifiers or supplier missing / 采购行标识或供应商缺失');
    if(po.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(po.unit.toLowerCase())||requiredDecimal(po.conversion,'Price_Conversion / 单位换算系数')!=='1')throw new Pending('Purchase currency/unit conversion needs confirmation / 采购币种或换算待确认');
-   const origin=supplierOrigin(po.supplier),originLabel=origin==='Thailand'?'泰国 Thailand':'中国 China';
-   const partRateRows=tariffs.filter(r=>country(r.importCountry)==='US'&&(r.part===s.part||r.part===material));
-   if(!partRateRows.length)throw new Pending('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');
-   const rateRows=partRateRows.filter(r=>country(r.exportCountry)===origin);
-   if(!rateRows.length)throw new Pending('No tariff for supplier export country / 关税表缺少供应商对应出口国: '+originLabel+'; '+po.supplier);
-   const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':requiredDecimal(r.rate,'Tariff rate / 关税率');
-   if(new Set(rateRows.map(r=>normalizedRate(r))).size!==1)throw new Pending('Conflicting source tariff rates / 底表原始关税率冲突');
-   const rate=rateRows[0],calc=calculate(price.price,rate.rate,origin);
+   return po;
+  });
+  // Tariff diagnostics run even when price or purchase-line selection is unresolved.
+  // Candidate routes are checked separately; never choose an arbitrary supplier.
+  const tariffLinks=materialResult?.links??mapping.filter(r=>r.fg===s.part&&normalizeRevision(r.fgRev)===s.revision).filter(r=>{try{return activeMaterialMapping(r);}catch{return false;}});
+  const identities=new Set([s.part,...tariffLinks.map(r=>r.material).filter(Boolean)]);
+  const partRateRows=tariffs.filter(r=>country(r.importCountry)==='US'&&identities.has(r.part));
+  let tariffResult=null;
+  if(!partRateRows.length){reasons.push('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');}
+  else {
+   const routes=[];
+   const routeCandidates=poResult?[poResult]:tariffLinks.filter(r=>['1','true','yes'].includes(String(r.blanket).toLowerCase())&&String(r.poStatus).trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus)).filter(r=>{try{return purchaseLineValid(r,asOf);}catch{return false;}});
+   if(!routeCandidates.length)reasons.push('Tariff export country unconfirmed / 关税出口国待确认');
+   for(const row of routeCandidates){const origin=check(()=>supplierOrigin(row.supplier));if(origin&&!routes.includes(origin))routes.push(origin);}
+   for(const origin of routes){const found=check(()=>{
+    const rateRows=partRateRows.filter(r=>country(r.exportCountry)===origin);
+    if(!rateRows.length)throw new Pending('No tariff for supplier export country / 缺少供应商出口国关税');
+    const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':requiredDecimal(r.rate,'Tariff rate / 关税率');
+    if(new Set(rateRows.map(normalizedRate)).size!==1)throw new Pending('Conflicting source tariff rates / 关税税率冲突');
+    // Validate nonnumeric and unsupported rates even when no customer price is available.
+    calculate('0',rateRows[0].rate,origin);
+    return {origin,rate:rateRows[0]};
+   });if(found&&poResult)tariffResult=found;}
+  }
+  const costResult=materialResult&&check(()=>{const {material,materialRev}=materialResult;
    const costs=costRows.filter(r=>r.part===material&&normalizeRevision(r.revision)===materialRev);
    if(costs.length!==1)throw new Pending(costs.length?'Several standard-cost Operations / 标准成本多个Operation待确认':'Material/revision not in cost template / 标准成本模板未找到原材料版本');
+   return costs[0];
+  });
+  if(reasons.length){issue(s,[...new Set(reasons)].join('; '),materialResult?{material:materialResult.material}:{});continue;}
+  if(!priceResult||!materialResult||!poResult||!tariffResult||!costResult){issue(s,'Source checks incomplete / 底表检查未完成');continue;}
+  const {price,effective}=priceResult,{material,materialRev}=materialResult,po=poResult,{origin,rate}=tariffResult,costs=[costResult],calc=calculate(price.price,rate.rate,origin);
    candidates.push({...s,material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
-  }catch(e){issue(s,e instanceof Pending?e.message:'Invalid or missing source value / 原始值无效或缺失: '+String(e.message));}
  }
  // A material shared by several finished parts must have one unambiguous target
  // and effective date. Never let the last row silently win.
