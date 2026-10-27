@@ -22,13 +22,13 @@ flowchart LR
 4. Review detected sheets, header rows and column mappings. Near spellings are suggestions requiring selection; duplicate aliases are not guessed.
 5. Review ready and pending records. Download both maintenance files and the optional review workbook. No Plex updates are performed by this tool.
 
-先上传零件清单，可下载已经填好清单的只读 SQL。运行该 SQL 并导出结果后，上传到 BOM／采购 PO 底表栏。标准成本模板使用原始 CSV；采购价格模板使用原始 `.xlsx`，默认保留前两行表头。异常记录不会写入维护文件。
+先上传零件清单，可下载已经填好清单的只读 SQL。下载的 SQL 同时填入所选期间结束日，采购行须在该日有效（空白日期不限期）。运行该 SQL 并导出结果后，上传到 BOM／采购 PO 底表栏。标准成本模板使用原始 CSV；采购价格模板使用原始 `.xlsx`，默认保留前两行表头。异常记录不会写入维护文件。
 
 ## Rules / 规则
 
 - Part + specified revision; blank means blank, numeric one-digit revision pads to two digits.
 - BOM: use only `BOM_Active = 1` components. Explicit finished-part fallback rows retain their blank BOM fields.
-- Purchase PO: `Blanket_Order = 1`; PO status `On Order`; line status excludes `Cancelled` and `Closed` (`Requisition` is allowed). Multiple candidates require confirmation.
+- Purchase PO: `Blanket_Order = 1`; PO status `On Order`; line status excludes `Cancelled` and `Closed` (`Requisition` is allowed). Line effective / expiration dates must include the selected review period end (inclusive; blank dates are unbounded). Multiple candidates require confirmation.
 - Import country is fixed to the United States. Export country follows the selected purchase supplier: Thailand → Thailand; Macao → China. Tariffs match the finished or material part number within that route. Missing supplier-country rates remain pending; another country is never substituted.
 - Tariff rounds half up to 2 decimals. Settlement ratio = `ROUND(factor / (1 + tariff), 2)`, Thailand factor `0.91`, China `0.93`.
 - Target purchase price = `ROUND(customer price × ratio, 4)`.
@@ -39,8 +39,8 @@ flowchart LR
 
 ## Run locally / 本机运行
 
-Run `python -m http.server 8788 --bind 127.0.0.1` in the published repository folder, then open `http://127.0.0.1:8788/` in Edge or Chrome. The standalone GitHub Pages version uses the same `dist` files.
+Run `python -m http.server 8788 --bind 127.0.0.1 --directory dist` in this folder, then open `http://127.0.0.1:8788/` in Edge or Chrome. The standalone GitHub Pages version uses the same `dist` files.
 
-Tests: `node --test material.test.mjs`. No build step. Customer-price selection uses an isolated copy of engine 4.7.0; the customer-price review website is unchanged.
+Tests: `node --test tests/*.test.mjs`. No build step. Customer-price selection uses an isolated copy of engine 4.7.0; the customer-price review website is unchanged.
 
 No-BOM mappings explicitly marked `Finished part fallback` may retain a blank BOM quantity. No quantity is invented. Invalid numeric-field warnings identify the field.

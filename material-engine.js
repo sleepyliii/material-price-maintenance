@@ -28,7 +28,21 @@ export function dateISO(value){try{const d=parseDate(String(value));if(d===null)
 export function latestEffective(values){const dates=values.flatMap(v=>String(v??'').split(/[;；]/).map(x=>dateISO(x.trim())));if(!dates.length)throw new Pending('Missing customer-price effective date / 客户售价生效日期缺失');return dates.sort().at(-1);}
 function requiredDecimal(value,label){const text=String(value??'').trim();try{return decimal(text.startsWith('.')?'0'+text:text);}catch{throw new Pending('Invalid or missing '+label+' / 字段无效或为空: '+label+' = '+(text||'(blank / 空白)'));}}
 export function uniqueScope(rows){return [...new Map(rows.filter(r=>r.part).map(r=>[key(r.part,normalizeRevision(r.revision)),{part:r.part,revision:normalizeRevision(r.revision)}])).values()];}
-export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues=[]}){
+export function reviewEnd(value){try{const day=parseDate(String(value??'').trim());if(day===null)throw new Error();return day;}catch{throw new Pending('Invalid or missing review period end / 检查期间结束日无效或缺失');}}
+export function purchaseLineValid(r,day){
+ const bound=(field)=>{if(!Object.hasOwn(r,field)||r[field]===undefined)throw new Pending('Purchase-line date column missing / 采购行日期字段缺失: '+field);const text=String(r[field]??'').trim();if(!text||text.toLowerCase()==='null')return null;try{return parseDate(text,true);}catch{throw new Pending('Invalid purchase-line date / 采购行日期无效: '+field+' = '+text);}};
+ const start=bound('lineEffective'),end=bound('lineExpiration');
+ if(start!==null&&end!==null&&start>end)throw new Pending('Purchase-line effective date exceeds expiration / 采购行生效日期晚于失效日期');
+ return (start===null||start<=day)&&(end===null||end>=day);
+}
+export function scopedPurchaseSQL(template,rows,endDate){
+ const end=iso(reviewEnd(endDate)),scope=uniqueScope(rows);if(!scope.length)throw new Pending('Empty parts list / 零件清单为空');
+ if(!template.includes('-- REVIEW_END_START')||!template.includes('-- REQUESTED_PARTS_START'))throw new Error('SQL template markers missing');
+ const quote=v=>String(v).replace(/'/g,"''");
+ return template.replace(/-- REVIEW_END_START[\s\S]*?-- REVIEW_END_END/,`DECLARE @ReviewEndDate DATE = '${end}';`).replace(/-- REQUESTED_PARTS_START[\s\S]*?-- REQUESTED_PARTS_END/,scope.map(r=>`INSERT INTO #RequestedParts (Part_No, Revision) VALUES ('${quote(r.part)}', '${quote(r.revision)}');`).join('\r\n'));
+}
+export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,priceIssues=[]}){
+ const asOf=reviewEnd(endDate);
  const issues=[],candidates=[];
  const issue=(s,reason,extra={})=>issues.push({part:s.part,revision:s.revision,...extra,reason});
  const scoped=uniqueScope(scope);if(!scoped.length)throw new Error('Empty parts list / 零件清单为空');
@@ -59,7 +73,9 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
     if(requiredDecimal(r.quantity,'BOM_Quantity / BOM用量')!=='1')throw new Pending('BOM quantity is not 1 / BOM用量非1，待确认');
    }
    if(links.some(r=>r.line&&(!String(r.lineStatus??'').trim()||String(r.lineStatus).trim().toLowerCase()==='null')))throw new Pending('Purchase-line status missing / 采购行状态缺失，待确认');
-   const qualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus));
+   const statusQualified=links.filter(r=>['1','true','yes'].includes(r.blanket.toLowerCase())&&r.poStatus.trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus));
+   const qualified=statusQualified.filter(r=>purchaseLineValid(r,asOf));
+   if(statusQualified.length&&!qualified.length)throw new Pending('No purchase line valid on period end / 检查期间结束日无有效采购行: '+iso(asOf));
    const unique=[...group(qualified,r=>key(r.line,r.po,r.lineNo)).values()].map(rr=>{
     if(new Set(rr.map(r=>JSON.stringify(r,Object.keys(r).filter(k=>k!=='_row')))).size!==1)throw new Pending('Inconsistent purchase-line records / 同一采购行记录不一致');
     return rr[0];

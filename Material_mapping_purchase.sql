@@ -12,11 +12,17 @@ Confirmed mapping rules:
   Require operation Active = 1 and BOM Active = 1; exclude inactive BOM components.
 Confirmed purchasing rules:
   Blanket_Order = 1; PO status = 'On Order'; line status excludes Cancelled / Closed (Requisition is allowed).
+  Line effective / expiration dates must include @ReviewEndDate (inclusive; NULL = unbounded).
   Keep all qualifying lines; do not automatically pick the latest PO.
 
 No cost/rate calculation or write-back is performed.
 Read-only export; no purchase-price or standard-cost updates are performed.
 */
+-- Select the same date as the website review period end.
+-- REVIEW_END_START
+DECLARE @ReviewEndDate DATE = CAST(GETDATE() AS DATE);
+-- REVIEW_END_END
+
 CREATE TABLE #RequestedParts (
     Part_No VARCHAR(100),
     Revision VARCHAR(100)
@@ -124,7 +130,9 @@ WHERE EXISTS (
 )
   AND P.Blanket_Order = 1
   AND PS.PO_Status = 'On Order'
-  AND UPPER(LTRIM(RTRIM(LS.Line_Item_Status))) NOT IN ('CANCELLED', 'CANCELED', 'CLOSED');
+  AND UPPER(LTRIM(RTRIM(LS.Line_Item_Status))) NOT IN ('CANCELLED', 'CANCELED', 'CLOSED')
+  AND (I.Effective_Date IS NULL OR CAST(I.Effective_Date AS DATE) <= @ReviewEndDate)
+  AND (I.Expiration_Date IS NULL OR CAST(I.Expiration_Date AS DATE) >= @ReviewEndDate);
 
 SELECT Material_Part_Key, COUNT(*) AS Qualified_PO_Line_Count
 INTO #PurchaseCounts
