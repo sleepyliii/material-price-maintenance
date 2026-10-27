@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Prepare purchase-price and material standard-cost maintenance files."><title>Material Maintenance · 原材料价格维护</title><link rel="stylesheet" href="style.css"></head>
+<body><header><div class="brand"><span class="mark">M</span><div><strong data-i="title">原材料价格维护</strong><small>Material maintenance · v1.0</small></div></div><button id="language" class="quiet">English</button></header>
+<main><section class="intro"><span class="eyebrow" data-i="workspace">维护文件准备</span><h1 data-i="heading">采购价格与标准成本</h1><p data-i="description">上传价格、BOM／采购 PO 和关税底表，生成采购价格 Excel 与标准成本 CSV。待确认记录不会自动写入维护文件。</p></section>
+<div class="layout"><div class="inputs"><section class="panel"><div class="section-title"><span class="step">01</span><h2 data-i="settings">检查范围</h2></div>
+<div class="pair"><label><span data-i="start">期间开始</span><input id="start" type="date"></label><label><span data-i="end">期间结束／当前价基准</span><input id="end" type="date"></label></div>
+<label><span data-i="priceMode">客户价格输入方式</span><select id="priceMode"><option value="raw" data-i="rawMode">Plex 客户价格底表（沿用当前价筛选规则）</option><option value="current" data-i="currentMode">客户价格工具导出的 Current PO 当前价</option></select></label>
+<label><span data-i="country">进口国（匹配关税路径）</span><select id="country"><option value="" data-i="uploadTariff">请先上传关税底表</option></select></label>
+<p class="note" data-i="yearNote">采购失效日期自动采用本年度 12 月 31 日。</p></section>
+<section class="panel"><div class="section-title"><span class="step">02</span><h2 data-i="files">上传文件</h2></div><div id="uploadSlots"></div>
+<details class="guide"><summary data-i="headerHelp">表头识别方式</summary><p data-i="headerText">忽略大小写、空格和常见标点，支持中英文别名。相似拼写会作为建议，需手动选择；重复匹配不会自动猜测。展开各文件可修改工作表、表头行和字段对应。</p></details></section>
+<button id="run" class="primary" data-i="run">检查并生成预览</button><div id="error" class="error" hidden role="alert"></div></div>
+<div class="results"><section class="panel results-panel"><div class="section-title"><span class="step">03</span><h2 data-i="results">核对与导出</h2><span id="runStatus" class="badge" data-i="waiting">等待检查</span></div>
+<div id="empty"><div class="empty-icon">↗</div><h3 data-i="emptyTitle">先上传本次维护数据</h3><p data-i="emptyText">结果会显示原材料、采购 PO、计算依据及更新前后的成本。</p></div>
+<div id="resultBody" hidden><div class="metrics"><div><span data-i="scoped">指定零件</span><strong id="countScope">0</strong></div><div><span data-i="ready">可维护原材料</span><strong id="countReady">0</strong></div><div><span data-i="pending">待确认</span><strong id="countIssues">0</strong></div></div>
+<div class="downloads"><button id="costDownload" data-i="costDownload">标准成本 CSV</button><button id="purchaseDownload" data-i="purchaseDownload">采购价格 Excel</button><button id="auditDownload" class="quiet" data-i="auditDownload">核对明细 Excel</button></div>
+<div id="partial" class="notice" hidden data-i="partial">下载仅包含“可维护”记录。请另行处理“待确认”记录。</div><p id="summary" class="note"></p>
+<div class="tabs" role="tablist"><button id="readyTab" class="active" role="tab" data-i="ready">可维护原材料</button><button id="issuesTab" role="tab" data-i="pending">待确认</button></div><div class="table-wrap" id="table"></div><div class="pagination"><button id="previous" class="quiet">←</button><span id="page"></span><button id="next" class="quiet">→</button></div></div></section>
+<section class="panel rules"><h2 data-i="rules">本工具使用的规则</h2><div class="rule-grid"><p data-i="rule1">采购 PO：Blanket 标记＝1，PO 和采购行状态均为 On Order。</p><p data-i="rule2">关税和采购比例先四舍五入至两位；采购价至四位。</p><p data-i="rule3">Material.Material＝目标采购价；Material.Tariff＝采购价×关税，保留计算精度。</p><p data-i="rule4">原材料多 Operation、多候选 PO、关税冲突或目标不一致时，列入待确认。</p></div></section></div></div>
+<footer><span data-i="footer">独立维护工具 · 不修改客户价格查看功能</span><a href="Material_mapping_purchase.sql" download data-i="sql">BOM／采购 PO 导出 SQL</a></footer></main><script type="module" src="app.js"></script></body></html>

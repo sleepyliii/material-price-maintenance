@@ -1,0 +1,6 @@
+SheetJS Community Edition 0.20.3
+Copyright SheetJS LLC and contributors.
+License: Apache License 2.0. Full license: LICENSE-SheetJS.txt
+Source: https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs
+The xlsx.mjs file is distributed unmodified.
+SHA-256: 1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db
