@@ -9,7 +9,7 @@ Customer selling prices will be connected separately from the price-review data.
 Confirmed mapping rules:
   No BOM component part number: use the finished part itself.
   NULL component revision: use the finished part revision.
-  Preserve original operation Active = 1 filter; return BOM_Active without a new filter.
+  Require operation Active = 1 and BOM Active = 1; exclude inactive BOM components.
 Confirmed purchasing rules:
   Blanket_Order = 1; PO status = 'On Order'; line status excludes Cancelled / Closed (Requisition is allowed).
   Keep all qualifying lines; do not automatically pick the latest PO.
@@ -61,6 +61,7 @@ WITH Scoped_BOM AS (
         ON O.Part_Operation_Key = B.Part_Operation_Key
     LEFT JOIN Part_v_Part AS C ON C.Part_Key = B.Component_Part_Key
     WHERE O.Active = 1
+      AND B.Active = 1
 )
 SELECT
     F.Part_Key AS FG_Part_Key,

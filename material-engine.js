@@ -7,6 +7,9 @@ export function eligibleLineStatus(value){const status=String(value??'').trim().
 const countryKey=value=>String(value??'').normalize('NFKC').trim().toLowerCase().replace(/[\s_.\-()/（）]+/g,'');
 export function country(value){const k=countryKey(value);for(const [name,aliases]of Object.entries({US:['US','USA','美国','United States','United States of America','美国 United States','美国 USA'],Thailand:['泰国','Thailand','泰国 Thailand'],China:['中国','China','中国 China']}))if(aliases.some(a=>countryKey(a)===k))return name;return null;}
 export function supplierOrigin(value){const s=String(value??'').normalize('NFKC').toLowerCase(),th=s.includes('thailand'),cn=s.includes('macao')||s.includes('macau');if(th===cn)throw new Pending('Supplier export country needs confirmation / 供应商出口国待确认: '+value);return th?'Thailand':'China';}
+const inactiveBOM=r=>['0','false','no'].includes(String(r.bomActive??'').trim().toLowerCase());
+const explicitFallback=r=>r.mappingSource==='Finished part fallback'&&r.material===r.fg&&normalizeRevision(r.materialRev)===normalizeRevision(r.fgRev);
+function activeMaterialMapping(r){const flag=String(r.bomActive??'').trim().toLowerCase();if(inactiveBOM(r))return false;if(['1','true','yes'].includes(flag))return true;if(explicitFallback(r)&&['','null'].includes(flag))return true;throw new Pending('BOM_Active missing or invalid / BOM有效标记缺失或无效，需确认字段对应或重新导出');}
 function parts(s){s=String(s).trim();if(s.startsWith('.'))s='0'+s;const canonical=decimal(s);if(canonical.startsWith('-'))throw new Pending('Negative number / 数值为负');const [a,b='']=canonical.split('.');return {n:BigInt(a+b),scale:b.length};}
 function format(n,scale){const s=n.toString().padStart(scale+1,'0');return scale?s.slice(0,-scale)+'.'+s.slice(-scale):s;}
 function roundFraction(n,d){const q=n/d;return q+(n%d*2n>=d?1n:0n);}
@@ -42,14 +45,16 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
    const price=prices[0],effective=latestEffective(prices.map(r=>r.effective));
    if(price.currency.toUpperCase()!=='USD'||!['ea','pcs'].includes(price.unit.toLowerCase()))throw new Pending('Currency/unit basis needs confirmation / 币种或单位待确认');
    if(effective>`${year}-12-31`)throw new Pending('Effective date is later than expiration / 生效日期晚于年底失效日');
-   const links=mapping.filter(r=>r.fg===s.part&&normalizeRevision(r.fgRev)===s.revision);
-   if(!links.length)throw new Pending('No material mapping / 未找到原材料对应关系');
+   const sourceLinks=mapping.filter(r=>r.fg===s.part&&normalizeRevision(r.fgRev)===s.revision);
+   if(!sourceLinks.length)throw new Pending('No material mapping / 未找到原材料对应关系');
+   const links=sourceLinks.filter(activeMaterialMapping);
+   if(!links.length)throw new Pending('No Active BOM in this export; re-export to check the accepted finished-part fallback / 底表没有有效BOM，请重新导出以核对成品回退关系');
    const materialGroups=group(links,r=>key(r.material,normalizeRevision(r.materialRev)));
    if(materialGroups.size!==1)throw new Pending('Several BOM materials need confirmation / 多个BOM组件待确认');
    const material=links[0].material,materialRev=normalizeRevision(links[0].materialRev);
    if(!material)throw new Pending('Material part missing / 原材料零件号缺失');
    for(const r of links){
-    const fallback=r.mappingSource==='Finished part fallback'&&r.material===r.fg&&normalizeRevision(r.materialRev)===normalizeRevision(r.fgRev);
+    const fallback=explicitFallback(r);
     if(fallback&&String(r.quantity??'').trim()==='')continue; // Accepted direct-purchase fallback; never invent a quantity of 1.
     if(requiredDecimal(r.quantity,'BOM_Quantity / BOM用量')!=='1')throw new Pending('BOM quantity is not 1 / BOM用量非1，待确认');
    }
@@ -79,7 +84,7 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,priceIssues
  // and effective date. Never let the last row silently win.
  const ready=[];
  for(const rr of group(candidates,r=>key(r.material,r.materialRev)).values()){
-  const related=mapping.filter(m=>m.material===rr[0].material&&normalizeRevision(m.materialRev)===rr[0].materialRev);
+  const related=mapping.filter(m=>!inactiveBOM(m)&&m.material===rr[0].material&&normalizeRevision(m.materialRev)===rr[0].materialRev);
   const unresolved=related.some(m=>issues.some(i=>i.part===m.fg&&i.revision===normalizeRevision(m.fgRev)));
   if(unresolved){for(const r of rr)issue(r,'Another finished part using this material is unresolved / 共用原材料的其他成品仍待确认',{material:r.material});}
   else if(new Set(rr.map(r=>key(r.purchase,r.tariffCost,r.effective,r.po,r.line,r.incoterms))).size!==1){for(const r of rr)issue(r,'Conflicting targets for shared material / 同一原材料的维护目标冲突',{material:r.material});}
