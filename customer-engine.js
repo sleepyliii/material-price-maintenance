@@ -1,5 +1,5 @@
 // Browser-local price review. No network requests or external dependencies.
-export const VERSION = '4.7.0';
+export const VERSION = '4.8.0';
 export const GM_CUSTOMERS = ['GMNA','GM-NA 1','GMCCA','GM Canada SPO','GM Henniges','GM Henniges SPO'];
 export const REPORTS=['currentPrices','priceChanges','overlaps','issues','history','gmCurrent','gmConsistency'];
 const isGM=r=>GM_CUSTOMERS.includes(r.customer_code);
@@ -180,7 +180,7 @@ function buildGMReports(report,matched,selected,periodStart,asOf,issue){
 function currentActivityPlan(selected){
  const excluded=new Set(),review=new Map(),pending=[];
  const identity=r=>key(r.PCN,r.po_line_key);
- for(const rr of groupBy(selected,r=>key(r.PCN,r.Minth_Part_No,normalizeRevision(r.revision))).values()){
+ for(const rr of groupBy(selected.filter(r=>!isGM(r)),r=>key(r.PCN,r.Minth_Part_No,normalizeRevision(r.revision))).values()){
   if(new Set(rr.map(r=>r.customer_code)).size<2)continue;
   const lines=[];
   for(const source of groupBy(rr,identity).values()){
