@@ -1,5 +1,5 @@
 // Browser-local price review. No network requests or external dependencies.
-export const VERSION = '4.8.0';
+export const VERSION = '4.8.1';
 export const GM_CUSTOMERS = ['GMNA','GM-NA 1','GMCCA','GM Canada SPO','GM Henniges','GM Henniges SPO'];
 export const REPORTS=['currentPrices','priceChanges','overlaps','issues','history','gmCurrent','gmConsistency'];
 const isGM=r=>GM_CUSTOMERS.includes(r.customer_code);

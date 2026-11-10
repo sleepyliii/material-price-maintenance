@@ -1,4 +1,4 @@
-import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.7';
+import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.8';
 export {normalizeRevision};
 const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
