@@ -3,3 +3,5 @@
 .results,.results-panel{min-width:0}.table-wrap{max-width:100%}.upload input[type=file]{font-size:0}.upload input[type=file]::file-selector-button{font-size:11px}
 
 .sql-downloads{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.sql-downloads a{display:inline-block;border:1px solid #d7e0e9;border-radius:5px;padding:7px 10px;font-size:11px;background:#f8fafc;color:#345776}
+
+.manual-price{min-width:300px;max-width:390px;white-space:normal}.manual-price select{max-width:360px;width:100%;font-size:11px;padding:7px}.manual-price label{margin:0 0 7px}.manual-price button{font-size:11px}.manual-price .note{margin:7px 0 0}

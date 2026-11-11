@@ -52,3 +52,9 @@ Checks run independently: unresolved customer prices or purchase lines do not st
 GM price checks follow the separate GM group comparison; zero Releases / Shipped does not itself create a confirmation. / GM 客户价独立按组比较，Releases／Shipped 双零本身不触发待确认。
 
 Download both SQL templates directly under **Upload files**: `Plex_export.sql` for customer prices, and `Material_mapping_purchase.sql` for BOM / purchase POs. The customer-price SQL matches the price-review tool and preserves full price history. / “上传文件”区域可直接下载客户价格 SQL 和 BOM／采购 PO SQL，客户价格模板与客户价格工具一致，保留完整售价历史。
+
+## Manual customer-price review / 人工确认客户价
+
+When resolved non-GM customer quotes disagree, open **Needs confirmation**, choose an existing quote (price, customer, PO and effective date), then click **Confirm selected price**. All BOM, purchase-line, tariff and cost checks run again. Only passing records enter both maintenance downloads. **Undo confirmation** restores automatic review. Changing source files, column mappings or review dates clears confirmations. Review Excel includes a price-confirmation sheet with the chosen quote, alternatives and confirmation time.
+
+非 GM 的已有客户当前价冲突时，可在“待确认”中选择一条候选价并确认。其他检查也通过才进入两个维护模板；可撤销。修改底表、字段对应或期间后清空确认。核对明细 Excel 保留选中价、候选价和确认时间。此入口仅处理已有、已确定的候选价，不替代 GM 组比价或未确定的 PO 有效价。
