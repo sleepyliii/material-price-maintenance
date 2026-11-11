@@ -1,5 +1,5 @@
-import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.9';
-import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.9';
+import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.10';
+import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.10';
 
 export const scopeKey=r=>JSON.stringify([r.part,normalizeRevision(r.revision)]);
 const complete=r=>['complete','completed','completed / 已完成','已完成'].includes(String(r.status??'').toLowerCase());
@@ -37,7 +37,7 @@ export function prepareWithConfirmations(input,confirmations=[]){
  const current=input.current.filter(r=>!selected.has(scopeKey(r)));
  current.push(...selected.values());
  const report=prepare({...input,current});
- for(const row of report.ready){
+ for(const row of new Set([...report.ready,...report.skippedPurchase])){
   const records=audit.filter(a=>String(row.part).split('; ').includes(a.part)&&normalizeRevision(row.revision)===a.revision);
   if(records.length){row.priceConfirmation='Manual / 人工确认';row.confirmedCustomerPrice=records.map(a=>a.price).join('; ');row.confirmedCustomerPO=records.map(a=>a.po).join('; ');row.priceConfirmedAt=records.map(a=>a.confirmedAt).join('; ');}
  }

@@ -18,7 +18,7 @@ flowchart LR
 
 1. Select the review period. Upload the parts list (`Part No` + `Revision`; `Rev` and `Part Revision` also work).
 2. Upload the original Plex customer-price base, or select the **Current PO export** input mode. A Current PO export must use the same as-of date as the period end.
-3. Upload the BOM / purchase PO export, tariff workbook, original standard-cost CSV and original purchase-price `.xlsx` template.
+3. Upload the BOM / purchase PO export, tariff workbook, either the original standard-cost CSV or the original purchase-price `.xlsx` template, or both.
 4. Review detected sheets, header rows and column mappings. Near spellings are suggestions requiring selection; duplicate aliases are not guessed.
 5. Review ready and pending records. Download both maintenance files and the optional review workbook. No Plex updates are performed by this tool.
 
@@ -55,6 +55,10 @@ Download both SQL templates directly under **Upload files**: `Plex_export.sql` f
 
 ## Manual customer-price review / 人工确认客户价
 
-When resolved non-GM customer quotes disagree, open **Needs confirmation**, choose an existing quote (price, customer, PO and effective date), then click **Confirm selected price**. All BOM, purchase-line, tariff and cost checks run again. Only passing records enter both maintenance downloads. **Undo confirmation** restores automatic review. Changing source files, column mappings or review dates clears confirmations. Review Excel includes a price-confirmation sheet with the chosen quote, alternatives and confirmation time.
+When resolved non-GM customer quotes disagree, open **Needs confirmation**, choose an existing quote (price, customer, PO and effective date), then click **Confirm selected price**. All applicable BOM, purchase-line, tariff and selected-template checks run again. Only passing records enter both maintenance downloads. **Undo confirmation** restores automatic review. Changing source files, column mappings or review dates clears confirmations. Review Excel includes a price-confirmation sheet with the chosen quote, alternatives and confirmation time.
 
 非 GM 的已有客户当前价冲突时，可在“待确认”中选择一条候选价并确认。其他检查也通过才进入两个维护模板；可撤销。修改底表、字段对应或期间后清空确认。核对明细 Excel 保留选中价、候选价和确认时间。此入口仅处理已有、已确定的候选价，不替代 GM 组比价或未确定的 PO 有效价。
+
+Maintenance templates are independent: upload the cost CSV, purchase Excel, or both. With both selected, unresolved cost Operations affect only the cost output. Purchase Excel excludes lines whose current `Purchase_Unit_Price` and target price round half up to the same four-decimal amount; these remain in the review workbook under **Unchanged purchase**. Standard-cost output is evaluated separately. At least one maintenance template is required.
+
+两个维护模板可任选其一或同时上传；成本行问题不影响采购文件。采购行现价与理论价四舍五入至四位后相同，则不导出采购更新，核对明细保留“采购同价”页；标准成本独立判断。

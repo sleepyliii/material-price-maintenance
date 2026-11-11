@@ -1,4 +1,4 @@
-import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.9';
+import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.10';
 export {normalizeRevision};
 const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
@@ -41,8 +41,9 @@ export function scopedPurchaseSQL(template,rows,endDate){
  const quote=v=>String(v).replace(/'/g,"''");
  return template.replace(/-- REVIEW_END_START[\s\S]*?-- REVIEW_END_END/,`DECLARE @ReviewEndDate DATE = '${end}';`).replace(/-- REQUESTED_PARTS_START[\s\S]*?-- REQUESTED_PARTS_END/,scope.map(r=>`INSERT INTO #RequestedParts (Part_No, Revision) VALUES ('${quote(r.part)}', '${quote(r.revision)}');`).join('\r\n'));
 }
-export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,priceIssues=[]}){
- const asOf=reviewEnd(endDate);
+export function prepare({scope,current,mapping,tariffs,costRows=[],year,endDate,priceIssues=[],targets={cost:true,purchase:true}}){
+ const asOf=reviewEnd(endDate),wantsCost=targets.cost===true,wantsPurchase=targets.purchase===true;
+ if(!wantsCost&&!wantsPurchase)throw new Pending('Choose at least one maintenance template / 请至少上传一个维护模板');
  const issues=[],candidates=[];
  const issue=(s,reason,extra={})=>issues.push({part:s.part,revision:s.revision,...extra,reason});
  const scoped=uniqueScope(scope);if(!scoped.length)throw new Error('Empty parts list / 零件清单为空');
@@ -115,25 +116,39 @@ export function prepare({scope,current,mapping,tariffs,costRows,year,endDate,pri
     return {origin,rate:rateRows[0]};
    });if(found&&poResult)tariffResult=found;}
   }
-  const costResult=materialResult&&check(()=>{const {material,materialRev}=materialResult;
+  const costReasons=[];
+  const costResult=wantsCost&&materialResult&&(()=>{try{const {material,materialRev}=materialResult;
    const costs=costRows.filter(r=>r.part===material&&normalizeRevision(r.revision)===materialRev);
    if(costs.length!==1)throw new Pending(costs.length?'Several standard-cost Operations / 标准成本多个Operation待确认':'Material/revision not in cost template / 标准成本模板未找到原材料版本');
    return costs[0];
-  });
-  if(reasons.length){issue(s,[...new Set(reasons)].join('; '),materialResult?{material:materialResult.material}:{});continue;}
-  if(!priceResult||!materialResult||!poResult||!tariffResult||!costResult){issue(s,'Source checks incomplete / 底表检查未完成');continue;}
-  const {price,effective}=priceResult,{material,materialRev}=materialResult,po=poResult,{origin,rate}=tariffResult,costs=[costResult],calc=calculate(price.price,rate.rate,origin);
-   candidates.push({...s,material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
+  }catch(e){costReasons.push(e instanceof Pending?e.message:'Invalid standard-cost row / 标准成本行无效');return null;}})();
+  if(reasons.length){issue(s,[...new Set([...reasons,...costReasons])].join('; '),materialResult?{material:materialResult.material}:{});continue;}
+  if(!priceResult||!materialResult||!poResult||!tariffResult){issue(s,'Source checks incomplete / 底表检查未完成');continue;}
+  const {price,effective}=priceResult,{material,materialRev}=materialResult,po=poResult,{origin,rate}=tariffResult,costs=[costResult||{}],calc=calculate(price.price,rate.rate,origin);
+   candidates.push({...s,_costIssue:costReasons.join('; '),material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
  }
  // A material shared by several finished parts must have one unambiguous target
  // and effective date. Never let the last row silently win.
- const ready=[];
+ const ready=[],readyCost=[],readyPurchase=[],skippedPurchase=[];
  for(const rr of group(candidates,r=>key(r.material,r.materialRev)).values()){
   const related=mapping.filter(m=>!inactiveBOM(m)&&m.material===rr[0].material&&normalizeRevision(m.materialRev)===rr[0].materialRev);
   const unresolved=related.some(m=>issues.some(i=>i.part===m.fg&&i.revision===normalizeRevision(m.fgRev)));
   if(unresolved){for(const r of rr)issue(r,'Another finished part using this material is unresolved / 共用原材料的其他成品仍待确认',{material:r.material});}
   else if(new Set(rr.map(r=>key(r.purchase,r.tariffCost,r.effective,r.po,r.line,r.incoterms))).size!==1){for(const r of rr)issue(r,'Conflicting targets for shared material / 同一原材料的维护目标冲突',{material:r.material});}
-  else ready.push({...rr[0],part:[...new Set(rr.map(r=>r.part))].join('; ')});
+  else {
+   const {_costIssue,...row}=rr[0];row.part=[...new Set(rr.map(r=>r.part))].join('; ');
+   const costIssue=[...new Set(rr.map(r=>r._costIssue).filter(Boolean))].join('; ');
+   row.costStatus=!wantsCost?'Not requested / 未选择':costIssue?'Needs confirmation / 待确认':'Ready / 可维护';
+   let purchaseIssue='',samePrice=false;
+   if(wantsPurchase){try{samePrice=round(requiredDecimal(row.oldPurchase,'Purchase_Unit_Price / 当前采购行价格'),4)===row.purchase;}catch(e){purchaseIssue=e.message;}}
+   row.purchaseStatus=!wantsPurchase?'Not requested / 未选择':purchaseIssue?'Needs confirmation / 待确认':samePrice?'Unchanged / 价格已一致':'Ready / 可维护';
+   if(wantsPurchase&&!purchaseIssue&&!samePrice)readyPurchase.push(row);
+   if(wantsPurchase&&samePrice)skippedPurchase.push(row);
+   if(purchaseIssue)for(const r of rr)issue(r,purchaseIssue,{material:r.material,target:'Purchase price / 采购价格'});
+   if(wantsCost&&!costIssue)readyCost.push(row);
+   if(costIssue)for(const r of rr)issue(r,costIssue,{material:r.material,target:'Standard cost / 标准成本'});
+   if((wantsPurchase&&!purchaseIssue&&!samePrice)||(wantsCost&&!costIssue))ready.push(row);
+  }
  }
- return {ready,issues,scopeCount:scoped.length,duplicateScope:scope.length-scoped.length};
+ return {ready,readyCost,readyPurchase,skippedPurchase,targets:{cost:wantsCost,purchase:wantsPurchase},issues,scopeCount:scoped.length,duplicateScope:scope.length-scoped.length};
 }
