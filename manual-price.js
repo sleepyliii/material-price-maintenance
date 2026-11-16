@@ -1,5 +1,5 @@
-import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.10';
-import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.10';
+import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.11';
+import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.11';
 
 export const scopeKey=r=>JSON.stringify([r.part,normalizeRevision(r.revision)]);
 const complete=r=>['complete','completed','completed / 已完成','已完成'].includes(String(r.status??'').toLowerCase());
@@ -16,7 +16,7 @@ export function manualPriceCandidates(input,part){
   const choices=rows.map(source=>{
    const price=round(source.price,4),effective=latestEffective([source.effective]),currency=String(source.currency).toUpperCase(),unit=String(source.unit).toLowerCase();
    if(currency!=='USD'||!['ea','pcs'].includes(unit)||!source.customer||!source.po)return null;
-   const row={part:source.part,revision:normalizeRevision(source.revision),customer:source.customer,po:source.po,price,currency,unit:unit==='pcs'?'pcs':'Ea',effective};
+   const row={priceSourcePart:source.priceSourcePart||source.part,part:source.part,revision:normalizeRevision(source.revision),customer:source.customer,po:source.po,price,currency,unit:unit==='pcs'?'pcs':'Ea',effective};
    return {...row,id:JSON.stringify(row),source};
   }).filter(Boolean);
   return [...new Map(choices.map(c=>[c.id,c])).values()];

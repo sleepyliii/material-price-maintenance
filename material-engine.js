@@ -1,4 +1,5 @@
-import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.10';
+import {strippedMaterialPart,tariffRouteMatch} from './part-lookup.js?v=1.0.11';
+import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.11';
 export {normalizeRevision};
 const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
@@ -100,20 +101,21 @@ export function prepare({scope,current,mapping,tariffs,costRows=[],year,endDate,
   const identities=new Set([s.part,...tariffLinks.map(r=>r.material).filter(Boolean)]);
   const partRateRows=tariffs.filter(r=>country(r.importCountry)==='US'&&identities.has(r.part));
   let tariffResult=null;
-  if(!partRateRows.length){reasons.push('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');}
+  const fallbackTariffPart=strippedMaterialPart(s.part),fallbackTariffRows=fallbackTariffPart?tariffs.filter(r=>country(r.importCountry)==='US'&&r.part===fallbackTariffPart):[];
+  if(!partRateRows.length&&!fallbackTariffRows.length){reasons.push('No exact tariff part match for US imports / 美国进口路径无精确零件号关税匹配');}
   else {
    const routes=[];
    const routeCandidates=poResult?[poResult]:tariffLinks.filter(r=>['1','true','yes'].includes(String(r.blanket).toLowerCase())&&String(r.poStatus).trim().toLowerCase()==='on order'&&eligibleLineStatus(r.lineStatus)).filter(r=>{try{return purchaseLineValid(r,asOf);}catch{return false;}});
    if(!routeCandidates.length)reasons.push('Tariff export country unconfirmed / 关税出口国待确认');
    for(const row of routeCandidates){const origin=check(()=>supplierOrigin(row.supplier));if(origin&&!routes.includes(origin))routes.push(origin);}
    for(const origin of routes){const found=check(()=>{
-    const rateRows=partRateRows.filter(r=>country(r.exportCountry)===origin);
+    const matched=tariffRouteMatch(tariffs,identities,s.part,origin,country),rateRows=matched.rows;
     if(!rateRows.length)throw new Pending('No tariff for supplier export country / 缺少供应商出口国关税');
     const normalizedRate=r=>r.rate==='0/0.278464'?'0.278':requiredDecimal(r.rate,'Tariff rate / 关税率');
     if(new Set(rateRows.map(normalizedRate)).size!==1)throw new Pending('Conflicting source tariff rates / 关税税率冲突');
     // Validate nonnumeric and unsupported rates even when no customer price is available.
     calculate('0',rateRows[0].rate,origin);
-    return {origin,rate:rateRows[0]};
+    return {origin,rate:rateRows[0],tariffSourcePart:[...new Set(rateRows.map(r=>r.part))].join('; '),tariffPartMatch:matched.match};
    });if(found&&poResult)tariffResult=found;}
   }
   const costReasons=[];
@@ -125,7 +127,7 @@ export function prepare({scope,current,mapping,tariffs,costRows=[],year,endDate,
   if(reasons.length){issue(s,[...new Set([...reasons,...costReasons])].join('; '),materialResult?{material:materialResult.material}:{});continue;}
   if(!priceResult||!materialResult||!poResult||!tariffResult){issue(s,'Source checks incomplete / 底表检查未完成');continue;}
   const {price,effective}=priceResult,{material,materialRev}=materialResult,po=poResult,{origin,rate}=tariffResult,costs=[costResult||{}],calc=calculate(price.price,rate.rate,origin);
-   candidates.push({...s,_costIssue:costReasons.join('; '),material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
+   candidates.push({...s,_costIssue:costReasons.join('; '),material,materialRev,customer:[...new Set(prices.map(r=>r.customer))].join('; '),customerPO:[...new Set(prices.map(r=>r.po))].join('; '),price:round(price.price,4),effective,expiration:`${year}-12-31`,supplier:po.supplier,incoterms:origin==='China'?'CIP':'CIF',po:po.po,line:po.line,lineNo:po.lineNo,oldPurchase:po.oldPrice,oldMaterial:costs[0].material,oldTariff:costs[0].tariff,operation:costs[0].operation,sourceRate:rate.rate,priceSourcePart:[...new Set(prices.map(r=>r.priceSourcePart||r.part))].join('; '),pricePartMatch:[...new Set(prices.map(r=>r.pricePartMatch||'exact'))].join('; '),tariffSourcePart:tariffResult.tariffSourcePart,tariffPartMatch:tariffResult.tariffPartMatch,importCountry:'US',origin,sourceExportCountry:rate.exportCountry,costRow:costs[0].index,...calc});
  }
  // A material shared by several finished parts must have one unambiguous target
  // and effective date. Never let the last row silently win.

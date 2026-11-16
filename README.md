@@ -62,3 +62,7 @@ When resolved non-GM customer quotes disagree, open **Needs confirmation**, choo
 Maintenance templates are independent: upload the cost CSV, purchase Excel, or both. With both selected, unresolved cost Operations affect only the cost output. Purchase Excel excludes lines whose current `Purchase_Unit_Price` and target price round half up to the same four-decimal amount; these remain in the review workbook under **Unchanged purchase**. Standard-cost output is evaluated separately. At least one maintenance template is required.
 
 两个维护模板可任选其一或同时上传；成本行问题不影响采购文件。采购行现价与理论价四舍五入至四位后相同，则不导出采购更新，核对明细保留“采购同价”页；标准成本独立判断。
+
+For uploaded scope parts beginning with `TI-` or `MI-`, raw Plex customer-price lookup retries without that one leading prefix only when the original part has no same-revision source price records. Current PO input does not use this fallback. Tariffs retry the stripped scope part only when the existing identifiers have no match in the selected US import / supplier export route. Existing conflicts and invalid values remain pending; suffixes, revisions, BOM and purchase-line matching are unchanged. Matched source part numbers are retained in the review output.
+
+上传清单中 TI-／MI- 开头的零件：Plex 原始价格底表中原编号没有同版本记录时，去掉一次前缀查客户价；Current PO 输入不启用此回退。关税在对应进出口国路径无匹配时再去前缀查找。已有冲突仍待确认，后缀、版本及 BOM／采购行规则不变。
