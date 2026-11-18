@@ -66,3 +66,6 @@ Maintenance templates are independent: upload the cost CSV, purchase Excel, or b
 For uploaded scope parts beginning with `TI-` or `MI-`, raw Plex customer-price lookup retries without that one leading prefix only when the original part has no same-revision source price records. Current PO input does not use this fallback. Tariffs retry the stripped scope part only when the existing identifiers have no match in the selected US import / supplier export route. Existing conflicts and invalid values remain pending; suffixes, revisions, BOM and purchase-line matching are unchanged. Matched source part numbers are retained in the review output.
 
 上传清单中 TI-／MI- 开头的零件：Plex 原始价格底表中原编号没有同版本记录时，去掉一次前缀查客户价；Current PO 输入不启用此回退。关税在对应进出口国路径无匹配时再去前缀查找。已有冲突仍待确认，后缀、版本及 BOM／采购行规则不变。
+
+
+MMC / MMC USD suppliers use Mexico tariffs for US imports. Mexico settlement ratio = ROUND(0.96 / (1 + tariff rounded to 2 decimals), 2); purchase price rounds to 4 decimals. / MMC／MMC USD 供应商出口国为墨西哥，进口国仍为美国；墨西哥比例＝0.96÷（1＋两位关税），比例四舍五入至两位、采购价至四位。

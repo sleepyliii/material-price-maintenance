@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,prepare,round,uniqueScope,scopedPurchaseSQL} from './material-engine.js';
+import {calculate,prepare,round,uniqueScope,scopedPurchaseSQL,supplierOrigin,country} from './material-engine.js';
 import {FIELDS,detect,bestHeader,mapRows} from './headers.js';
 import {csvRecords,csvMatrix,exportCostCSV,zipBytes,unzip,read} from './files.js';
 const fixture=()=>({endDate:'2026-10-27',scope:[{part:'FG-DEMO',revision:''}],current:[{part:'FG-DEMO',revision:'',price:'2.9100',effective:'2026-07-01',currency:'USD',unit:'Ea',status:'complete',customer:'Customer Demo',po:'S-DEMO'}],mapping:[{fg:'FG-DEMO',fgRev:'',material:'RM-DEMO',materialRev:'',quantity:'1',bomActive:'1',po:'P-DEMO',line:'12',lineNo:'100',blanket:'1',poStatus:'On Order',lineStatus:'On Order',lineEffective:'',lineExpiration:'',supplier:'157 Minth Thailand',currency:'USD',unit:'Ea',conversion:'1',oldPrice:'2.161553040'}],tariffs:[{importCountry:'US',exportCountry:'泰国',part:'FG-DEMO',rate:'0.279714'}],costRows:[{part:'RM-DEMO',revision:'',operation:'Receive Ea.',material:'2.16155',tariff:'0.53545',index:1}],importCountry:'US',year:2026});
@@ -8,7 +8,7 @@ test('Confirmed Thai calculation uses exact decimals',()=>assert.deepEqual(calcu
 test('Tariff cost uses the rounded purchase price',()=>assert.equal(calculate('10.5905','.279714','Thailand').tariffCost,'2.105404'));
 test('China factor and special tariff text',()=>{assert.equal(calculate('2.91','.529714','China').purchase,'1.7751');assert.equal(calculate('2.91','0/0.278464','泰国').tariff,'0.28');});
 test('Half-up ties and tiny decimal differences',()=>{assert.equal(round('.275',2),'0.28');assert.equal(round('1.00555',4),'1.0056');assert.equal(calculate('1.005','0.28','泰国').purchase,'0.7136');});
-test('Unconfirmed country or tariff is never calculated',()=>{assert.throws(()=>calculate('1','0','Mexico'));assert.throws(()=>calculate('1','Domestic Purchase','Thailand'));});
+test('Unconfirmed country or tariff is never calculated',()=>{assert.throws(()=>calculate('1','0','Canada'));assert.throws(()=>calculate('1','Domestic Purchase','Thailand'));});
 test('Full chain includes dates, incoterms and source trace',()=>{const r=prepare(fixture());assert.equal(r.ready.length,1);assert.equal(r.issues.length,0);assert.equal(r.ready[0].incoterms,'CIF');assert.equal(r.ready[0].effective,'2026-07-01');assert.equal(r.ready[0].expiration,'2026-12-31');assert.equal(r.ready[0].purchase,'2.0661');});
 test('Tariff can match only the finished part or only the material part',()=>{for(const part of ['FG-DEMO','RM-DEMO']){const f=fixture();f.tariffs[0].part=part;assert.equal(prepare(f).ready[0].purchase,'2.0661');}});
 test('Both tariff identities can match the same rate; conflicting rates still require confirmation',()=>{const f=fixture();f.tariffs.push({...f.tariffs[0],part:'RM-DEMO'});assert.equal(prepare(f).ready.length,1);f.tariffs[1].rate='0.06';assert.equal(prepare(f).ready.length,0);assert.match(prepare(f).issues[0].reason,/Conflicting source tariff/);});
@@ -119,4 +119,11 @@ test('Tariff retries the stripped part when only another export country exists f
 test('Stripped tariff conflicts and missing supplier-country routes stay pending',()=>{for(const change of [f=>f.tariffs.push({...f.tariffs[0],rate:'0.06'}),f=>f.tariffs[0].exportCountry='China']){const f=prefixFixture();f.current=[{...f.current[0],part:'TI-FG-DEMO'}];change(f);assert.equal(prepare(f).ready.length,0);assert.match(prepare(f).issues[0].reason,/tariff/);}});
 test('Prefix lookup does not alter BOM matching or create a missing mapping',()=>{const f=prefixFixture();f.mapping[0].fg='FG-DEMO';f.current=remapCustomerRows(f.current,planCustomerLookup(f.scope,[],'raw'));const r=prepare(f);assert.equal(r.ready.length,0);assert.match(r.issues[0].reason,/No material mapping/);});
 test('Non-prefixed requested parts do not strip prefixes from mapped material identifiers',()=>{const f=fixture();f.mapping[0].material='TI-OTHER';f.costRows[0].part='TI-OTHER';f.tariffs[0].part='OTHER';assert.equal(prepare(f).ready.length,0);assert.match(prepare(f).issues[0].reason,/No exact tariff/);});
+
+ test('MMC supplier aliases identify Mexico without broad substring matching',()=>{for(const value of ['MMC','MMC USD',' mmc usd ','MMC  USD'])assert.equal(supplierOrigin(value),'Mexico');for(const value of ['MMX','Other MMC','MMC USD extra'])assert.throws(()=>supplierOrigin(value));});
+ test('Mexico country aliases select only the Mexico route',()=>{for(const value of ['墨西哥','Mexico','México','墨西哥 Mexico'])assert.equal(country(value),'Mexico');});
+ test('Mexico uses confirmed 0.96 factor and Mexico tariff only',()=>{const f=fixture();f.mapping[0].supplier='MMC USD';f.tariffs.push({...f.tariffs[0],exportCountry:'Mexico',rate:'0.28'});const r=prepare(f);assert.equal(r.issues.length,0);assert.equal(r.ready[0].origin,'Mexico');assert.equal(r.ready[0].ratio,'0.75');assert.equal(r.ready[0].purchase,'2.1825');assert.equal(r.ready[0].tariffCost,'0.6111');assert.equal(r.ready[0].incoterms,'CIF');});
+ test('Mexico missing route stays pending rather than using Thai tariff',()=>{const f=fixture();f.mapping[0].supplier='MMC';const r=prepare(f);assert.equal(r.ready.length,0);assert.match(r.issues[0].reason,/No tariff for supplier export country/);});
+ test('Mexico zero tariff and half-up tariff rounding retain calculation rules',()=>{assert.deepEqual(calculate('2.91','0','Mexico'),{tariff:'0.00',ratio:'0.96',purchase:'2.7936',tariffCost:'0'});assert.equal(calculate('2.91','0.275','墨西哥').ratio,'0.75');});
+
 

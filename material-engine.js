@@ -1,13 +1,13 @@
-import {strippedMaterialPart,tariffRouteMatch} from './part-lookup.js?v=1.0.11';
-import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.11';
+import {strippedMaterialPart,tariffRouteMatch} from './part-lookup.js?v=1.0.12';
+import {normalizeRevision,decimal,parseDate,iso} from './customer-engine.js?v=1.0.12';
 export {normalizeRevision};
 const key=(...v)=>JSON.stringify(v);
 const group=(rows,fn)=>{const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;};
 export class Pending extends Error{}
 export function eligibleLineStatus(value){const status=String(value??'').trim().toLowerCase();return Boolean(status)&&status!=='null'&&!['cancelled','canceled','closed'].includes(status);}
 const countryKey=value=>String(value??'').normalize('NFKC').trim().toLowerCase().replace(/[\s_.\-()/（）]+/g,'');
-export function country(value){const k=countryKey(value);for(const [name,aliases]of Object.entries({US:['US','USA','美国','United States','United States of America','美国 United States','美国 USA'],Thailand:['泰国','Thailand','泰国 Thailand'],China:['中国','China','中国 China']}))if(aliases.some(a=>countryKey(a)===k))return name;return null;}
-export function supplierOrigin(value){const s=String(value??'').normalize('NFKC').toLowerCase(),th=s.includes('thailand'),cn=s.includes('macao')||s.includes('macau');if(th===cn)throw new Pending('Supplier export country needs confirmation / 供应商出口国待确认: '+value);return th?'Thailand':'China';}
+export function country(value){const k=countryKey(value);for(const [name,aliases]of Object.entries({US:['US','USA','美国','United States','United States of America','美国 United States','美国 USA'],Thailand:['泰国','Thailand','泰国 Thailand'],China:['中国','China','中国 China'],Mexico:['墨西哥','Mexico','México','墨西哥 Mexico']}))if(aliases.some(a=>countryKey(a)===k))return name;return null;}
+export function supplierOrigin(value){const s=String(value??'').normalize('NFKC').toLowerCase(),th=s.includes('thailand'),cn=s.includes('macao')||s.includes('macau'),mx=/^mmc(?:\s+usd)?$/.test(s.trim());if([th,cn,mx].filter(Boolean).length!==1)throw new Pending('Supplier export country needs confirmation / 供应商出口国待确认: '+value);return th?'Thailand':cn?'China':'Mexico';}
 const inactiveBOM=r=>['0','false','no'].includes(String(r.bomActive??'').trim().toLowerCase());
 const explicitFallback=r=>r.mappingSource==='Finished part fallback'&&r.material===r.fg&&normalizeRevision(r.materialRev)===normalizeRevision(r.fgRev);
 function activeMaterialMapping(r){const flag=String(r.bomActive??'').trim().toLowerCase();if(inactiveBOM(r))return false;if(['1','true','yes'].includes(flag))return true;if(explicitFallback(r)&&['','null'].includes(flag))return true;throw new Pending('BOM_Active missing or invalid / BOM有效标记缺失或无效，需确认字段对应或重新导出');}
@@ -17,7 +17,7 @@ function roundFraction(n,d){const q=n/d;return q+(n%d*2n>=d?1n:0n);}
 export function round(s,digits){const p=parts(s);return format(roundFraction(p.n*10n**BigInt(digits),10n**BigInt(p.scale)),digits);}
 export function multiply(a,b){const x=parts(a),y=parts(b);return format(x.n*y.n,x.scale+y.scale);}
 export function calculate(price,sourceRate,origin){
- const factor=({'泰国':'0.91','Thailand':'0.91','中国':'0.93','China':'0.93'})[origin];
+ const factor=({'泰国':'0.91','Thailand':'0.91','中国':'0.93','China':'0.93','墨西哥':'0.96','Mexico':'0.96'})[origin];
  if(!factor)throw new Pending('Settlement factor unconfirmed / 出口国留利比例待确认: '+origin);
  const selected=sourceRate==='0/0.278464'?'0.278':sourceRate;
  const tariff=round(selected,2), t=parts(tariff), f=parts(factor);

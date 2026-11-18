@@ -1,4 +1,4 @@
-import {normalizeRevision} from './customer-engine.js?v=1.0.11';
+import {normalizeRevision} from './customer-engine.js?v=1.0.12';
 
 // Only remove one leading material prefix. Preserve suffixes and revisions.
 export const strippedMaterialPart=part=>/^(TI|MI)-.+/.test(String(part))?String(part).slice(3):null;

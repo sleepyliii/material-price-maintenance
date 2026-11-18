@@ -1,5 +1,5 @@
-import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.11';
-import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.11';
+import {prepare,normalizeRevision,round,latestEffective,Pending} from './material-engine.js?v=1.0.12';
+import {GM_CUSTOMERS} from './customer-engine.js?v=1.0.12';
 
 export const scopeKey=r=>JSON.stringify([r.part,normalizeRevision(r.revision)]);
 const complete=r=>['complete','completed','completed / 已完成','已完成'].includes(String(r.status??'').toLowerCase());
